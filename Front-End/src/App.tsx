@@ -1,15 +1,26 @@
-import React, { useState, ChangeEventHandler } from "react";
+import React, { useState, ChangeEventHandler, useEffect } from "react";
 import NoteItem from "./components/NoteItem";
 import axios from "axios";
+
+type noteType = {
+  id: string;
+  title: string;
+  description?: string;
+};
 
 // let title = "";
 const App = () => {
   // const [title, setTitle] = useState("");
   // const [description, setDescription] = useState("");
+
+  const [count, setCount] = useState(0);
+  const [noteToView, setNoteToView] = useState<noteType>();
+  const [notes, setNotes] = useState<noteType[]>([]);
   const [values, setValues] = useState({
     title: "",
     description: "",
   });
+  const [selectedNoteId, setSelectedNoteId] = useState("");
 
   const handleChange: ChangeEventHandler<
     HTMLInputElement | HTMLTextAreaElement
@@ -18,11 +29,42 @@ const App = () => {
     setValues({ ...values, [name]: value });
   };
 
+  useEffect(() => {
+    const fetchNotes = async () => {
+      // call the api and fetch notes
+      const { data } = await axios("http://localhost:8000/note");
+      setNotes(data.notes);
+    };
+
+    fetchNotes();
+  }, []);
+
   return (
     <div className="max-w-3xl mx-auto space-y-6">
       <form
         onSubmit={async (evt) => {
           evt.preventDefault();
+          if (selectedNoteId) {
+            // then we want to update
+            const { data } = await axios.patch(
+              "http://localhost:8000/note/" + selectedNoteId,
+              {
+                title: values.title,
+                description: values.description,
+              }
+            );
+            const updateNotes = notes.map((note) => {
+              if (note.id === selectedNoteId) {
+                note.title = data.note.title;
+                note.description = data.note.description;
+              }
+              return note;
+            });
+            setNotes([...updateNotes]);
+            setValues({ title: "", description: "" });
+            return;
+          }
+
           const { data } = await axios.post(
             "http://localhost:8000/note/create",
             {
@@ -30,10 +72,17 @@ const App = () => {
               description: values.description,
             }
           );
-          console.log(data);
+          setNotes([data.note, ...notes]);
+          setValues({ title: "", description: "" });
         }}
         className="space-y-6 bg-white shadow-md rounded p-5"
       >
+        <div>
+          <span>{count} </span>
+          <button type="button" onClick={() => setCount(count + 1)}>
+            Click Me
+          </button>
+        </div>
         <h1 className="font-semibold text-2xl text-center">Note Application</h1>
         <div>
           <input
@@ -62,10 +111,46 @@ const App = () => {
       </form>
 
       {/* Note Items */}
-      <NoteItem title="My first re-usable component" />
-      <NoteItem title="Lorem ipsum dolor sit amet consectetur" />
-      <NoteItem title="Hic perferendis at repellendus fuga" />
-      <NoteItem title="In molestiae optio aspernatur repudiandae" />
+
+      {notes.map((note) => {
+        return (
+          <NoteItem
+            onViewClick={() => {
+              if (noteToView) {
+                setNoteToView(undefined);
+              } else {
+                setNoteToView(note);
+              }
+            }}
+            description={
+              noteToView?.id === note.id ? noteToView?.description : ""
+            }
+            onEditClick={() => {
+              setSelectedNoteId(note.id);
+              setValues({
+                title: note.title,
+                description: note.description || "",
+              });
+            }}
+            onDeleteClick={async () => {
+              const result = confirm("Are you sure?");
+              if (result) {
+                //delete
+                await axios.delete("http://localhost:8000/note/" + note.id);
+
+                // const updateNotes = notes.filter(({ id }) => {
+                //   if (id !== note.id) return note;
+                // });
+                const updateNotes = notes.filter(({ id }) => id !== note.id);
+
+                setNotes([...updateNotes]);
+              }
+            }}
+            key={note.id}
+            title={note.title}
+          />
+        );
+      })}
     </div>
   );
 };
